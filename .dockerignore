@@ -1,0 +1,10 @@
+/.vscode
+/.idea
+/target
+.git
+.gitignore
+Dockerfile
+Makefile
+LICENSE
+README.md
+config.toml
