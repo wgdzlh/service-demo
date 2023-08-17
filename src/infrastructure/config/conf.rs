@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct ServerConfig {
-    #[serde(skip)]
+    #[serde(skip_deserializing)]
     pub run_local: bool,
     pub port: Option<u16>,
 }

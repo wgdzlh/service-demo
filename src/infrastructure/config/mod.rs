@@ -34,7 +34,9 @@ pub static JSON_TIME_FORMAT: Lazy<Vec<FormatItem>> = Lazy::new(|| {
 pub static LOCAL_OFFSET: Lazy<UtcOffset> = Lazy::new(|| UtcOffset::current_local_offset().unwrap());
 
 pub fn init() -> app::Result<()> {
-    let run_local = true;
+    let args: Vec<String> = std::env::args().collect();
+    // println!("args: {args:?}");
+    let run_local = matches!(&args[..], [_, v, ..] if v == "-l");
     let mut ic;
     if run_local {
         let contents =
