@@ -42,9 +42,10 @@ impl ActiveModelBehavior for ActiveModel {
         if insert {
             self.created_at = Set(utils::get_current_time());
             self.updated_at = self.created_at.clone();
-        } else {
+        } else if self.title.is_set() || self.content.is_set() {
             self.updated_at = Set(utils::get_current_time());
         }
+
         Ok(self)
     }
 }

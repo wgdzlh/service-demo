@@ -36,7 +36,7 @@ pub async fn list(
 
 /// Create new Todo
 ///
-/// Tries to create a new Todo item to in-memory storage or fails with 409 conflict if already exists.
+/// Try to create a new Todo item to in-memory storage.
 #[utoipa::path(
         post,
         path = "/todo",
@@ -60,10 +60,10 @@ pub async fn create(store: State<TodoStore>, Json(todo): Json<Todo>) -> Result<J
         put,
         path = "/todo/{id}",
         params(
-            ("id" = i32, Path, description = "Todo database id")
+            ("id" = i32, Path, description = "Todo item id")
         ),
         responses(
-            (status = 200, description = "Todo marked done successfully", body = VoidRes),
+            (status = 200, description = "Todo marked done successfully", body = VoidRes)
         )
     )]
 pub async fn mark_done(store: State<TodoStore>, Path(id): Path<i32>) -> Result<Json<VoidRes>> {
@@ -83,7 +83,7 @@ pub async fn mark_done(store: State<TodoStore>, Path(id): Path<i32>) -> Result<J
         path = "/todo",
         request_body = TodoUpdate,
         responses(
-            (status = 200, description = "Todo marked done successfully", body = VoidRes),
+            (status = 200, description = "Todo marked done successfully", body = VoidRes)
         )
     )]
 pub async fn edit(store: State<TodoStore>, Json(todo): Json<TodoUpdate>) -> Result<Json<VoidRes>> {
@@ -93,7 +93,7 @@ pub async fn edit(store: State<TodoStore>, Json(todo): Json<TodoUpdate>) -> Resu
 
 /// Delete Todo items by id
 ///
-/// Delete Todo items from in-memory storage by ids seperated by comma.
+/// Delete Todo items from in-memory storage by comma-separated ids.
 #[utoipa::path(
         delete,
         path = "/todo",

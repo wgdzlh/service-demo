@@ -6,7 +6,6 @@ use crate::{
     repository::{Error, Result, TodoQuery, TodoRepo, TodoUpdate},
 };
 
-/// In-memory Todo store
 pub type TodoStore = Arc<dyn TodoRepo + Send + Sync>;
 
 pub(super) fn get_todo_store() -> TodoStore {
@@ -15,6 +14,7 @@ pub(super) fn get_todo_store() -> TodoStore {
     })
 }
 
+/// In-memory Todo store
 struct TodoRepoImp {
     data: Mutex<Vec<Todo>>,
 }

@@ -1,11 +1,11 @@
+pub mod post;
+pub mod todo;
+
 use axum::{response::IntoResponse, Json};
 
 use crate::repository::Error;
 
 use super::resp::{Response, Void, VoidRes};
-
-pub mod post;
-pub mod todo;
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {

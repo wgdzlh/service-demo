@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub async fn serve(db: Db) -> Result<(), Error> {
-    let todo_repo = Router::new()
+    let todo_handler = Router::new()
         .route(
             "/",
             routing::get(todo::list)
@@ -26,7 +26,7 @@ pub async fn serve(db: Db) -> Result<(), Error> {
         .route("/:id", routing::put(todo::mark_done))
         .with_state(db.todo.clone());
 
-    let post_repo = Router::new()
+    let post_handler = Router::new()
         .route(
             "/",
             routing::get(post::list)
@@ -34,11 +34,12 @@ pub async fn serve(db: Db) -> Result<(), Error> {
                 .put(post::edit)
                 .delete(post::delete),
         )
+        .route("/:id", routing::get(post::get))
         .with_state(db.post.clone());
 
     let root = Router::new()
-        .nest("/todo", todo_repo)
-        .nest("/post", post_repo);
+        .nest("/todo", todo_handler)
+        .nest("/post", post_handler);
 
     let app = Router::new()
         .merge(

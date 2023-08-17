@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     Json,
 };
 
@@ -14,7 +14,7 @@ use super::ok_resp;
 
 /// Query Post items
 ///
-/// Query Post items from in-memory storage.
+/// Query Post items from database.
 #[utoipa::path(
         get,
         path = "/post",
@@ -22,7 +22,7 @@ use super::ok_resp;
             PostQuery
         ),
         responses(
-            (status = 200, description = "List matching posts by query", body = PostListRes)
+            (status = 200, description = "List matching Post items by query", body = PostListRes)
         )
     )]
 pub async fn list(
@@ -33,9 +33,27 @@ pub async fn list(
     Ok(Json(Response::new(posts.into())))
 }
 
+/// Get a Post
+///
+/// Get detail of a Post item by id.
+#[utoipa::path(
+    get,
+    path = "/post/{id}",
+    params(
+        ("id" = i32, Path, description = "Post item id")
+    ),
+    responses(
+        (status = 200, description = "Post item fetch successfully", body = PostRes)
+    )
+)]
+pub async fn get(store: State<PostStore>, Path(id): Path<i32>) -> Result<Json<PostRes>> {
+    let post = store.fetch(id).await?;
+    Ok(Json(Response::new(post)))
+}
+
 /// Create new Post
 ///
-/// Tries to create a new Post item to in-memory storage or fails with 409 conflict if already exists.
+/// Try to create a new Post item to database.
 #[utoipa::path(
         post,
         path = "/post",
@@ -60,7 +78,7 @@ pub async fn create(store: State<PostStore>, Json(post): Json<PostNew>) -> Resul
         path = "/post",
         request_body = PostUpdate,
         responses(
-            (status = 200, description = "Post marked done successfully", body = VoidRes),
+            (status = 200, description = "Post item edited successfully", body = VoidRes)
         )
     )]
 pub async fn edit(store: State<PostStore>, Json(post): Json<PostUpdate>) -> Result<Json<VoidRes>> {
@@ -70,7 +88,7 @@ pub async fn edit(store: State<PostStore>, Json(post): Json<PostUpdate>) -> Resu
 
 /// Delete Post items by id
 ///
-/// Delete Post items from in-memory storage by ids seperated by comma.
+/// Delete Post items from database by comma-separated ids.
 #[utoipa::path(
         delete,
         path = "/post",
@@ -78,7 +96,7 @@ pub async fn edit(store: State<PostStore>, Json(post): Json<PostUpdate>) -> Resu
             PostDelete
         ),
         responses(
-            (status = 200, description = "Post marked done successfully", body = VoidRes)
+            (status = 200, description = "Post items deleted successfully", body = VoidRes)
         )
     )]
 pub async fn delete(

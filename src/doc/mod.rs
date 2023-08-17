@@ -16,6 +16,7 @@ use crate::repository::*;
             todo::delete,
 
             post::list,
+            post::get,
             post::create,
             post::edit,
             post::delete,

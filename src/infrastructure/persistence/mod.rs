@@ -1,9 +1,10 @@
 mod todo;
-use sea_orm::DbConn;
 pub use todo::TodoStore;
 
 mod post;
 pub use post::PostStore;
+
+use sea_orm::DbConn;
 
 pub struct Db {
     pub todo: TodoStore,

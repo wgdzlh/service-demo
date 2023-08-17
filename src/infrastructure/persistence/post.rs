@@ -12,13 +12,13 @@ use crate::{
     repository::{Error, PostNew, PostQuery, PostRepo, PostUpdate, Result},
 };
 
-/// In-memory Post store
 pub type PostStore = Arc<dyn PostRepo + Send + Sync>;
 
 pub(super) fn get_post_store(db: &DbConn) -> PostStore {
     Arc::new(PostRepoImp { db: db.clone() })
 }
 
+/// Database Post store
 struct PostRepoImp {
     db: DbConn,
 }
@@ -65,7 +65,26 @@ impl PostRepo for PostRepoImp {
     async fn fetch(&self, id: i32) -> Result<Post> {
         info!(?id, "fetch post");
         let res = Entity::find_by_id(id).one(&self.db).await?;
-        res.ok_or(Error::IdNotFound { id })
+        match res {
+            Some(v) => {
+                // ActiveModel {
+                //     id: Unchanged(id),
+                //     views: Set(v.views + 1),
+                //     ..Default::default()
+                // }
+                // .update(&self.db)
+                // .await?;
+                self.db
+                    .execute(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        "UPDATE posts SET views = views + 1 WHERE id = $1",
+                        [id.into()],
+                    ))
+                    .await?;
+                Ok(v)
+            }
+            None => Err(Error::IdNotFound { id }),
+        }
     }
 
     async fn query(&self, params: PostQuery) -> Result<(Vec<Post>, u64)> {
