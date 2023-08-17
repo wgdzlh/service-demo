@@ -11,7 +11,10 @@ pub use domain::{entity, repository};
 
 use app::log::*;
 
+use infrastructure::config;
+
 fn main() -> app::Result<()> {
+    config::init()?;
     init_logger();
 
     let version = option_env!("APP_VERSION").unwrap_or("dev");

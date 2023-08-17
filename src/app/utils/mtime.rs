@@ -3,7 +3,7 @@ use serde::{Deserialize, Deserializer, Serializer};
 use crate::{entity::DateTimeTZ, infrastructure::config};
 
 pub fn get_current_time() -> DateTimeTZ {
-    DateTimeTZ::now_local().unwrap_or(DateTimeTZ::now_utc())
+    DateTimeTZ::now_local().unwrap_or_else(|_| DateTimeTZ::now_utc())
 }
 
 pub fn get_current_time_str() -> String {

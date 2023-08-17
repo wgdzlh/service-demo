@@ -92,9 +92,15 @@ impl PostRepo for PostRepoImp {
         let page = params.page.unwrap_or(1);
         let size = params.size.unwrap_or(10);
 
-        let paginator = Entity::find()
-            .order_by_desc(Column::Id)
-            .paginate(&self.db, size);
+        let mut cur = Entity::find();
+        if let Some(v) = params.title {
+            cur = cur.filter(Column::Title.like(format!("%{}%", v)));
+        }
+        if let Some(v) = params.content {
+            cur = cur.filter(Column::Content.like(format!("%{}%", v)));
+        }
+
+        let paginator = cur.order_by_desc(Column::Id).paginate(&self.db, size);
 
         let total = paginator.num_items().await?;
         let res = paginator.fetch_page(page - 1).await?;

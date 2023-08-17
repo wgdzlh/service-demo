@@ -1,0 +1,11 @@
+[server]
+port = 8080
+
+[log]
+level = "debug"
+
+[db]
+url = "postgres://postgres:bjsh@192.168.0.221:20397/test?sslmode=disable"
+auto_migrate = true
+# 是否开启sqlx日志输出
+log_mode = false
