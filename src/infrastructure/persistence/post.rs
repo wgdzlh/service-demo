@@ -76,7 +76,7 @@ impl PostRepo for PostRepoImp {
                 // .await?;
                 self.db
                     .execute(Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
+                        DbBackend::Postgres,
                         "UPDATE posts SET views = views + 1 WHERE id = $1",
                         [id.into()],
                     ))

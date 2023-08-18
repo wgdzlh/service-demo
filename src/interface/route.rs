@@ -4,11 +4,13 @@ use axum::{routing, Router, Server};
 use const_format::concatcp;
 use hyper::Error;
 use tokio::signal;
-use tracing::info;
+use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
+    app::log::info,
     doc::ApiDoc,
     infrastructure::{config::BASE_PATH, persistence::Db},
     interface::handler::{post, todo},
@@ -39,7 +41,12 @@ pub async fn serve(db: Db) -> Result<(), Error> {
 
     let root = Router::new()
         .nest("/todo", todo_handler)
-        .nest("/post", post_handler);
+        .nest("/post", post_handler)
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(DefaultOnRequest::new().level(Level::TRACE))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        );
 
     let app = Router::new()
         .merge(
