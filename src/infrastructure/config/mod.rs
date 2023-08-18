@@ -1,7 +1,7 @@
 mod conf;
 mod nacos;
 
-use std::{cell::RefCell, fs, sync::Mutex};
+use std::{fs, sync::RwLock};
 
 use const_format::concatcp;
 use once_cell::sync::Lazy;
@@ -12,12 +12,10 @@ use time::{
 
 use conf::Config;
 
-use crate::app;
+use crate::{app, repository::Result};
 
 pub const APP: &str = "service-demo";
 pub const BASE_PATH: &str = concatcp!("/", APP, "/v1");
-
-pub static C: Lazy<Mutex<RefCell<Config>>> = Lazy::new(Mutex::default);
 
 pub static TIME_FORMAT: Lazy<Vec<FormatItem>> = Lazy::new(|| {
     format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]")
@@ -33,21 +31,31 @@ pub static JSON_TIME_FORMAT: Lazy<Vec<FormatItem>> = Lazy::new(|| {
 
 pub static LOCAL_OFFSET: Lazy<UtcOffset> = Lazy::new(|| UtcOffset::current_local_offset().unwrap());
 
+static C: Lazy<RwLock<Config>> = Lazy::new(RwLock::default);
+
 pub fn init() -> app::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     // println!("args: {args:?}");
     let run_local = matches!(&args[..], [_, v, ..] if v == "-l");
-    let mut ic;
+    let mut initial_conf;
     if run_local {
-        let contents =
-            fs::read_to_string("./config.toml").expect("config file ./config.toml not exist");
-        ic = Config::parse(&contents);
-        ic.server.run_local = true;
+        let cs = fs::read_to_string("./config.toml").expect("local ./config.toml not exist");
+        initial_conf = Config::parse(&cs)?;
+        initial_conf.server.run_local = true;
     } else {
         let cs = nacos::setup_nacos_conf_sub()?;
-        ic = Config::parse(&cs);
+        initial_conf = Config::parse(&cs)?;
     }
-    println!("initial config: {}", serde_json::to_value(&ic)?);
-    *C.lock().unwrap().borrow_mut() = ic;
+    println!("initial config: {}", serde_json::to_value(&initial_conf)?);
+    set_config(initial_conf)?;
     Ok(())
+}
+
+fn set_config(new_conf: Config) -> Result<()> {
+    *C.write()? = new_conf;
+    Ok(())
+}
+
+pub fn get_config() -> Result<Config> {
+    Ok(C.read()?.clone())
 }

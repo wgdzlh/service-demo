@@ -19,15 +19,10 @@ pub struct Db {
 
 impl Db {
     pub async fn setup() -> app::Result<Self> {
-        let mut opt;
-        {
-            let cc = config::C.lock().unwrap();
-            let cc = cc.borrow();
-            let db_conf = &cc.db;
-            opt = ConnectOptions::new(db_conf.url.clone());
-            if !db_conf.log_mode {
-                opt.sqlx_logging_level(LevelFilter::Trace);
-            }
+        let db_conf = config::get_config()?.db;
+        let mut opt = ConnectOptions::new(db_conf.url.clone());
+        if !db_conf.log_mode {
+            opt.sqlx_logging_level(LevelFilter::Trace);
         }
 
         let conn = Database::connect(opt)

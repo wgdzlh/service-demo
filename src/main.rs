@@ -15,7 +15,7 @@ use infrastructure::config;
 
 fn main() -> app::Result<()> {
     config::init()?;
-    init_logger();
+    init_logger()?;
 
     let version = option_env!("APP_VERSION").unwrap_or("dev");
     let build_time = option_env!("BUILD_TIME").unwrap_or("unknown");

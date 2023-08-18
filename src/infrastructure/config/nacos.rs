@@ -37,7 +37,14 @@ pub fn setup_nacos_conf_sub() -> app::Result<String> {
         fn notify(&self, config_resp: ConfigResponse) {
             info!("listener get config from nacos: {}", config_resp);
             let cc = super::Config::parse(config_resp.content());
-            *super::C.lock().unwrap().borrow_mut() = cc;
+            match cc {
+                Ok(conf) => {
+                    if let Err(e) = super::set_config(conf) {
+                        error!("listener set new config failed: {}", e);
+                    }
+                }
+                Err(e) => error!("listener parse new config failed: {}", e),
+            }
         }
     }
 

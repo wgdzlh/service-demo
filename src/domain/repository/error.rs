@@ -1,7 +1,4 @@
-use std::{
-    fmt,
-    sync::{MutexGuard, PoisonError},
-};
+use std::{fmt, sync::PoisonError};
 
 use sea_orm::DbErr;
 
@@ -13,6 +10,7 @@ pub enum Error {
     IdNotFound { id: i32 },
     DbError(String),
     Other(String),
+    LockFailed(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -37,9 +35,9 @@ impl From<&str> for Error {
     }
 }
 
-impl<T> From<PoisonError<MutexGuard<'_, T>>> for Error {
-    fn from(value: PoisonError<MutexGuard<'_, T>>) -> Self {
-        Self::Other(value.to_string())
+impl<T> From<PoisonError<T>> for Error {
+    fn from(value: PoisonError<T>) -> Self {
+        Self::LockFailed(value.to_string())
     }
 }
 

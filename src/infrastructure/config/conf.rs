@@ -1,18 +1,20 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Serialize, Deserialize)]
+use crate::app;
+
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ServerConfig {
     #[serde(skip_deserializing)]
     pub run_local: bool,
     pub port: Option<u16>,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct LogConfig {
     pub level: String,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct PgSqlConfig {
     pub url: String,
     #[serde(default)]
@@ -21,7 +23,7 @@ pub struct PgSqlConfig {
     pub auto_migrate: bool,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     pub server: ServerConfig,
     pub log: LogConfig,
@@ -29,7 +31,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn parse(input: &str) -> Self {
-        toml::from_str(input).unwrap()
+    pub fn parse(input: &str) -> app::Result<Self> {
+        Ok(toml::from_str(input)?)
     }
 }
