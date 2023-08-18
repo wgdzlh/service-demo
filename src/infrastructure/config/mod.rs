@@ -1,7 +1,7 @@
 mod conf;
 mod nacos;
 
-use std::{fs, sync::RwLock};
+use std::{fs, sync::Mutex};
 
 use const_format::concatcp;
 use once_cell::sync::Lazy;
@@ -31,8 +31,6 @@ pub static JSON_TIME_FORMAT: Lazy<Vec<FormatItem>> = Lazy::new(|| {
 
 pub static LOCAL_OFFSET: Lazy<UtcOffset> = Lazy::new(|| UtcOffset::current_local_offset().unwrap());
 
-static C: Lazy<RwLock<Config>> = Lazy::new(RwLock::default);
-
 pub fn init() -> app::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     // println!("args: {args:?}");
@@ -46,16 +44,38 @@ pub fn init() -> app::Result<()> {
         let cs = nacos::setup_nacos_conf_sub()?;
         initial_conf = Config::parse(&cs)?;
     }
-    println!("initial config: {}", serde_json::to_value(&initial_conf)?);
-    set_config(initial_conf)?;
+    println!(
+        "initial config: {}",
+        serde_json::to_string_pretty(&initial_conf)?
+    );
+    set_config(initial_conf, true)?;
     Ok(())
 }
 
-fn set_config(new_conf: Config) -> Result<()> {
-    *C.write()? = new_conf;
+type Callback = Box<dyn Fn(&Config, &Config) + Send + Sync>;
+
+static C: Lazy<Mutex<Config>> = Lazy::new(Mutex::default);
+static CALLBACKS: Lazy<Mutex<Vec<Callback>>> = Lazy::new(Mutex::default);
+
+fn set_config(new_conf: Config, init: bool) -> Result<()> {
+    if init {
+        *C.lock()? = new_conf;
+    } else {
+        let old_conf = get_config()?;
+        *C.lock()? = new_conf.clone();
+        let cbs = CALLBACKS.lock()?;
+        for f in cbs.iter() {
+            f(&new_conf, &old_conf);
+        }
+    }
     Ok(())
 }
 
 pub fn get_config() -> Result<Config> {
-    Ok(C.read()?.clone())
+    Ok(C.lock()?.clone())
+}
+
+pub fn add_callback(f: Callback) -> Result<()> {
+    CALLBACKS.lock()?.push(f);
+    Ok(())
 }

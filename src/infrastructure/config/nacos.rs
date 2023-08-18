@@ -39,7 +39,7 @@ pub fn setup_nacos_conf_sub() -> app::Result<String> {
             let cc = super::Config::parse(config_resp.content());
             match cc {
                 Ok(conf) => {
-                    if let Err(e) = super::set_config(conf) {
+                    if let Err(e) = super::set_config(conf, false) {
                         error!("listener set new config failed: {}", e);
                     }
                 }

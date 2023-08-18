@@ -3,7 +3,8 @@ use serde::{Deserialize, Deserializer, Serializer};
 use crate::{entity::DateTimeTZ, infrastructure::config};
 
 pub fn get_current_time() -> DateTimeTZ {
-    DateTimeTZ::now_local().unwrap_or_else(|_| DateTimeTZ::now_utc())
+    // DateTimeTZ::now_local().unwrap_or_else(|_| DateTimeTZ::now_utc())
+    DateTimeTZ::now_utc().to_offset(*config::LOCAL_OFFSET) // no need to detect offset every time
 }
 
 pub fn get_current_time_str() -> String {
@@ -30,5 +31,7 @@ where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    DateTimeTZ::parse(&s, &config::JSON_TIME_FORMAT).map_err(serde::de::Error::custom)
+    Ok(DateTimeTZ::parse(&s, &config::JSON_TIME_FORMAT)
+        .map_err(serde::de::Error::custom)?
+        .replace_offset(*config::LOCAL_OFFSET))
 }

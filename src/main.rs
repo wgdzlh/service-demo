@@ -20,6 +20,6 @@ fn main() -> app::Result<()> {
     let version = option_env!("APP_VERSION").unwrap_or("dev");
     let build_time = option_env!("BUILD_TIME").unwrap_or("unknown");
 
-    info!(?version, ?build_time, "service-demo starting...",);
+    info!(?version, ?build_time, "service-demo starting...");
     app::cmd::run()
 }
