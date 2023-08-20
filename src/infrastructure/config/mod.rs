@@ -45,16 +45,16 @@ pub fn init() -> app::Result<()> {
         initial_conf = Config::parse(&cs)?;
     }
     println!(
-        "initial config: {}",
+        "initial config:\n{}",
         serde_json::to_string_pretty(&initial_conf)?
     );
     set_config(initial_conf, true)?;
     Ok(())
 }
 
-type Callback = Box<dyn Fn(&Config, &Config) + Send + Sync>;
+type Callback = Box<dyn FnMut(&Config, &Config) + Send + Sync>; // callback type for online config change; may mutate captured vars
 
-static C: Lazy<Mutex<Config>> = Lazy::new(Mutex::default);
+static C: Lazy<Mutex<Config>> = Lazy::new(Mutex::default); // global config instance
 static CALLBACKS: Lazy<Mutex<Vec<Callback>>> = Lazy::new(Mutex::default);
 
 fn set_config(new_conf: Config, init: bool) -> Result<()> {
@@ -63,8 +63,8 @@ fn set_config(new_conf: Config, init: bool) -> Result<()> {
     } else {
         let old_conf = get_config()?;
         *C.lock()? = new_conf.clone();
-        let cbs = CALLBACKS.lock()?;
-        for f in cbs.iter() {
+        let mut cbs = CALLBACKS.lock()?;
+        for f in cbs.iter_mut() {
             f(&new_conf, &old_conf);
         }
     }

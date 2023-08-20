@@ -94,10 +94,10 @@ impl PostRepo for PostRepoImp {
 
         let mut cur = Entity::find();
         if let Some(v) = params.title {
-            cur = cur.filter(Column::Title.like(format!("%{}%", v)));
+            cur = cur.filter(Column::Title.like(format!("%{v}%")));
         }
         if let Some(v) = params.content {
-            cur = cur.filter(Column::Content.like(format!("%{}%", v)));
+            cur = cur.filter(Column::Content.like(format!("%{v}%")));
         }
 
         let paginator = cur.order_by_desc(Column::Id).paginate(&self.db, size);

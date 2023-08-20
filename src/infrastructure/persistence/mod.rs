@@ -28,8 +28,10 @@ impl Db {
         let conn = Database::connect(opt)
             .await
             .expect("Database connection failed");
+        if db_conf.auto_migrate {
+            Migrator::up(&conn, None).await?;
+        }
 
-        Migrator::up(&conn, None).await?;
         Ok(Self {
             todo: todo::get_todo_store(),
             post: post::get_post_store(&conn),

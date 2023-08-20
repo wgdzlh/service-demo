@@ -24,7 +24,7 @@ build-nc: ## Build the image for dev without caching
 	docker build --no-cache -t $(IMAGE) . --build-arg APP_VERSION="$(VERSION)-`git rev-parse --short HEAD`"
 
 run: ## Run container
-	docker run -it --rm -v $(CURDIR)/config.toml:/app/config.toml -p $(PORT):$(PORT) --name $(APP) $(IMAGE) -l
+	docker run -it --rm --add-host host.docker.internal:host-gateway -v $(CURDIR)/config.toml:/app/config.toml -p $(PORT):$(PORT) --name $(APP) $(IMAGE) -l
 
 up: build run ## Build and Run
 
