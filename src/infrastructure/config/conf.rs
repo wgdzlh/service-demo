@@ -25,7 +25,9 @@ pub struct PgSqlConfig {
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default)]
     pub server: ServerConfig,
+    #[serde(default)]
     pub log: LogConfig,
     pub db: PgSqlConfig,
 }

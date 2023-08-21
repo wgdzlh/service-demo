@@ -16,6 +16,9 @@ use crate::{app, repository::Result};
 
 pub const APP: &str = "service-demo";
 pub const BASE_PATH: &str = concatcp!("/", APP, "/v1");
+pub const DEFAULT_PORT: u16 = 8080;
+
+pub const DEFAULT_LOG_LEVEL: &str = "info";
 
 pub static TIME_FORMAT: Lazy<Vec<FormatItem>> = Lazy::new(|| {
     format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]")
@@ -57,7 +60,10 @@ type Callback = Box<dyn FnMut(&Config, &Config) + Send + Sync>; // callback type
 static C: Lazy<Mutex<Config>> = Lazy::new(Mutex::default); // global config instance
 static CALLBACKS: Lazy<Mutex<Vec<Callback>>> = Lazy::new(Mutex::default);
 
-fn set_config(new_conf: Config, init: bool) -> Result<()> {
+fn set_config(mut new_conf: Config, init: bool) -> Result<()> {
+    if new_conf.log.level.is_empty() {
+        new_conf.log.level = DEFAULT_LOG_LEVEL.to_owned();
+    }
     if init {
         *C.lock()? = new_conf;
     } else {

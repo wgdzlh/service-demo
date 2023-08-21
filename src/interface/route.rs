@@ -2,7 +2,6 @@ use std::net::{Ipv4Addr, SocketAddr};
 
 use axum::{routing, Router, Server};
 use const_format::concatcp;
-use hyper::Error;
 use tokio::signal;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -10,13 +9,13 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
-    app::log::info,
+    app::{self, log::*},
     doc::ApiDoc,
-    infrastructure::{config::BASE_PATH, persistence::Db},
+    infrastructure::{config, persistence::Db},
     interface::handler::{post, todo},
 };
 
-pub async fn serve(db: Db) -> Result<(), Error> {
+pub async fn serve(db: Db) -> app::Result<()> {
     let todo_handler = Router::new()
         .route(
             "/",
@@ -50,16 +49,20 @@ pub async fn serve(db: Db) -> Result<(), Error> {
 
     let app = Router::new()
         .merge(
-            SwaggerUi::new(concatcp!(BASE_PATH, "/swagger-ui"))
+            SwaggerUi::new(concatcp!(config::BASE_PATH, "/swagger-ui"))
                 .url("/api-docs/openapi.json", ApiDoc::openapi()),
         )
-        .nest(BASE_PATH, root);
+        .nest(config::BASE_PATH, root);
 
-    let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 8080));
+    let server_conf = config::get_config()?.server;
+    let port = server_conf.port.unwrap_or(config::DEFAULT_PORT);
+
+    let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, port));
     Server::bind(&address)
         .serve(app.into_make_service())
         .with_graceful_shutdown(shutdown_signal())
-        .await
+        .await?;
+    Ok(())
 }
 
 async fn shutdown_signal() {
