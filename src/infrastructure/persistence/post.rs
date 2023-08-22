@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sea_orm::sea_query::Expr;
 use sea_orm::*;
 
 use crate::{
@@ -67,20 +68,18 @@ impl PostRepo for PostRepoImp {
         let res = Entity::find_by_id(id).one(&self.db).await?;
         match res {
             Some(v) => {
-                // ActiveModel {
-                //     id: Unchanged(id),
-                //     views: Set(v.views + 1),
-                //     ..Default::default()
-                // }
-                // .update(&self.db)
-                // .await?;
-                self.db
-                    .execute(Statement::from_sql_and_values(
-                        DbBackend::Postgres,
-                        "UPDATE posts SET views = views + 1 WHERE id = $1",
-                        [id.into()],
-                    ))
+                Entity::update_many()
+                    .col_expr(Column::Views, Expr::col(Column::Views).add(1))
+                    .filter(Column::Id.eq(id))
+                    .exec(&self.db)
                     .await?;
+                // self.db
+                //     .execute(Statement::from_sql_and_values(
+                //         DbBackend::Postgres,
+                //         "UPDATE posts SET views = views + 1 WHERE id = $1",
+                //         [id.into()],
+                //     ))
+                //     .await?;
                 Ok(v)
             }
             None => Err(Error::IdNotFound { id }),
@@ -94,10 +93,10 @@ impl PostRepo for PostRepoImp {
 
         let mut cur = Entity::find();
         if let Some(v) = params.title {
-            cur = cur.filter(Column::Title.like(format!("%{v}%")));
+            cur = cur.filter(Column::Title.contains(v));
         }
         if let Some(v) = params.content {
-            cur = cur.filter(Column::Content.like(format!("%{v}%")));
+            cur = cur.filter(Column::Content.contains(v));
         }
 
         let paginator = cur.order_by_desc(Column::Id).paginate(&self.db, size);

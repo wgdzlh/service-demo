@@ -19,6 +19,7 @@ pub fn init_logger() -> super::Result<()> {
     // }
     let log_conf = config::get_config()?.log;
     let log_level: LevelFilter = log_conf.level.parse().expect("wrong log level");
+    let is_debug = log_level <= LevelFilter::DEBUG;
 
     let log_layer = fmt::layer()
         // .with_timer(LocalTime::new(&config::TIME_FORMAT))
@@ -27,8 +28,8 @@ pub fn init_logger() -> super::Result<()> {
             *config::LOCAL_OFFSET,
             &config::TIME_FORMAT,
         ))
-        .with_file(true)
-        .with_line_number(true)
+        .with_file(is_debug)
+        .with_line_number(is_debug)
         .with_filter(log_level);
 
     let (log_layer, reload_handle) = reload::Layer::new(log_layer);
