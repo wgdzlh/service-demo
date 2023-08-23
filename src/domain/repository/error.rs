@@ -1,6 +1,4 @@
-use std::{fmt, sync::PoisonError};
-
-use sea_orm::DbErr;
+use std::{fmt, io, sync::PoisonError};
 
 /// entity repo errors
 #[derive(Debug)]
@@ -9,8 +7,12 @@ pub enum Error {
     BadRequest,
     IdNotFound { id: i32 },
     DbError(String),
-    Other(String),
     LockFailed(String),
+    IoError(String),
+    EmptyRet,
+    SubmitTimeout,
+    RunSubCmdError(String),
+    Other(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -41,8 +43,14 @@ impl<T> From<PoisonError<T>> for Error {
     }
 }
 
-impl From<DbErr> for Error {
-    fn from(value: DbErr) -> Self {
+impl From<sea_orm::DbErr> for Error {
+    fn from(value: sea_orm::DbErr) -> Self {
         Self::DbError(value.to_string())
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
+        Self::IoError(value.to_string())
     }
 }

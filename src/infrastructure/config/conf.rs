@@ -24,12 +24,19 @@ pub struct PgSqlConfig {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
+pub struct ChildProcConfig {
+    pub timeout_secs: u64,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub server: ServerConfig,
     #[serde(default)]
     pub log: LogConfig,
     pub db: PgSqlConfig,
+    #[serde(default)]
+    pub py: ChildProcConfig,
 }
 
 impl Config {
