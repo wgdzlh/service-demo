@@ -23,8 +23,8 @@ ARG APP_VERSION=v1.0.0
 # Build application
 RUN APP_VERSION=${APP_VERSION} BUILD_TIME=`date +%Y-%m-%dT%H:%M:%S` cargo build --release --target x86_64-unknown-linux-musl
 
-# Create a new stage with a minimal image
-FROM alpine:3.17.5
+# Create a new stage with a minimal image for runtime
+FROM python:3.10.12-alpine3.17
 ENV TZ=Asia/Shanghai
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \
@@ -32,5 +32,8 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositorie
     && ln -fs /usr/share/zoneinfo/$TZ /etc/localtime
 
 WORKDIR /app
+COPY scripts/requirements.txt ./
+RUN pip install --no-cache-dir -i https://mirrors.cloud.tencent.com/pypi/simple -r requirements.txt
+COPY scripts/read_xls.py ./scripts/
 COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/service-demo .
 ENTRYPOINT ["./service-demo"]

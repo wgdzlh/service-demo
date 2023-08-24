@@ -9,3 +9,7 @@ url = "postgres://postgres:mysecretpassword@host.docker.internal:5432/postgres?s
 auto_migrate = true
 # 是否开启sqlx日志输出
 log_mode = false
+
+[py]
+read_xls_workers = 2
+timeout_secs = 10

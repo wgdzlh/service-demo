@@ -28,6 +28,7 @@ pub struct ListData<T> {
 
 #[derive(Serialize, ToSchema)]
 #[aliases(VoidRes = Response<Void>, IdRes = Response<IdData>,
+     ObjectRes = Response<Box<serde_json::value::RawValue>>,
      TodoRes = Response<Todo>, TodoListRes = Response<Vec<Todo>>,
      PostRes = Response<Post>, PostListRes = Response<PostList>)]
 pub struct Response<T> {

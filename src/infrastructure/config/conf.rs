@@ -25,6 +25,8 @@ pub struct PgSqlConfig {
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ChildProcConfig {
+    pub read_xls_workers: usize,
+    pub read_xls_inter_ms: Option<u64>,
     pub timeout_secs: u64,
 }
 

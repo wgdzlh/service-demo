@@ -18,7 +18,7 @@ const ERROR_SIG_CHAR: u8 = b'!'; // special first char to indicate child worker 
 
 pub struct Cmd {
     bin: String,
-    args: Vec<String>,
+    args: Option<Vec<String>>,
 }
 
 pub struct ChildProc {
@@ -38,8 +38,11 @@ struct Worker {
 impl Worker {
     fn start(cmd: &Arc<Cmd>) -> Result<Self> {
         let cmd = cmd.clone();
-        let mut proc = Command::new(&cmd.bin)
-            .args(&cmd.args)
+        let mut child_def = Command::new(&cmd.bin);
+        if let Some(args) = &cmd.args {
+            child_def.args(args);
+        }
+        let mut proc = child_def
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -104,12 +107,15 @@ impl Worker {
 
 impl ChildProc {
     pub async fn setup(
-        bin: String,
-        args: Vec<String>,
+        bin: &str,
+        args: Option<Vec<String>>,
         size: usize,
         inter: Option<Duration>,
     ) -> Result<ChildProc> {
-        let cmd = Arc::new(Cmd { bin, args });
+        let cmd = Arc::new(Cmd {
+            bin: bin.to_owned(),
+            args,
+        });
         let mut workers = Vec::new();
         for _ in 0..size {
             workers.push(Worker::start(&cmd)?);
@@ -124,11 +130,12 @@ impl ChildProc {
             concurrent: size,
         })
     }
+
     pub async fn one_shot(&self, input: String) -> Result<String> {
         Worker::start(&self.cmd)?.run(input).await
     }
 
-    pub async fn submit(&mut self, input: String) -> Result<String> {
+    pub async fn submit(&self, input: String) -> Result<String> {
         if self.concurrent == 0 {
             return self.one_shot(input).await;
         }

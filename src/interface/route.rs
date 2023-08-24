@@ -1,6 +1,6 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
-use axum::{routing, Router, Server};
+use axum::{extract::DefaultBodyLimit, routing, Router, Server};
 use const_format::concatcp;
 use tokio::signal;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -11,11 +11,15 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::{
     app::{self, log::*},
     doc::ApiDoc,
-    infrastructure::{config, persistence::Db},
+    infrastructure::{config, persistence::Db, shell::ChildWorkers},
     interface::handler::{post, todo},
 };
 
-pub async fn serve(db: Db) -> app::Result<()> {
+use super::handler::read_xls;
+
+const MAX_BODY_SIZE: usize = 1024 * 1024 * 128;
+
+pub async fn serve(db: Db, child_workers: ChildWorkers) -> app::Result<()> {
     let todo_handler = Router::new()
         .route(
             "/",
@@ -38,9 +42,15 @@ pub async fn serve(db: Db) -> app::Result<()> {
         .route("/:id", routing::get(post::get))
         .with_state(db.post.clone());
 
+    let read_xls_handler = Router::new()
+        .route("/parse", routing::post(read_xls::parse))
+        .with_state(child_workers.read_xls);
+
     let root = Router::new()
         .nest("/todo", todo_handler)
         .nest("/post", post_handler)
+        .nest("/xls", read_xls_handler)
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .layer(
             TraceLayer::new_for_http()
                 .on_request(DefaultOnRequest::new().level(Level::TRACE))

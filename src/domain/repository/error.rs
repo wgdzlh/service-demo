@@ -1,10 +1,13 @@
 use std::{fmt, io, sync::PoisonError};
 
+use axum::extract::multipart::MultipartError;
+
 /// entity repo errors
 #[derive(Debug)]
 // #[serde(tag = "type", content = "detail")]
 pub enum Error {
     BadRequest,
+    BadMultipart(String),
     IdNotFound { id: i32 },
     DbError(String),
     LockFailed(String),
@@ -12,10 +15,11 @@ pub enum Error {
     EmptyRet,
     SubmitTimeout,
     RunSubCmdError(String),
+    JsonParseError(String),
     Other(String),
 }
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -52,5 +56,17 @@ impl From<sea_orm::DbErr> for Error {
 impl From<io::Error> for Error {
     fn from(value: io::Error) -> Self {
         Self::IoError(value.to_string())
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Self::JsonParseError(value.to_string())
+    }
+}
+
+impl From<MultipartError> for Error {
+    fn from(value: MultipartError) -> Self {
+        Self::BadMultipart(value.to_string())
     }
 }

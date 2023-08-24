@@ -1,11 +1,12 @@
 pub mod post;
+pub mod read_xls;
 pub mod todo;
 
 use axum::{response::IntoResponse, Json};
 
-use crate::repository::Error;
+use crate::repository::{Error, Result};
 
-use super::resp::{Response, Void, VoidRes};
+use super::resp::{ObjectRes, Response, Void, VoidRes};
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
@@ -18,4 +19,8 @@ impl IntoResponse for Error {
 
 fn ok_resp() -> VoidRes {
     Response::new(Void {})
+}
+
+fn to_raw_resp(s: String) -> Result<ObjectRes> {
+    Ok(Response::new(serde_json::from_slice(s.as_bytes())?))
 }

@@ -20,6 +20,8 @@ use crate::repository::*;
             post::create,
             post::edit,
             post::delete,
+
+            read_xls::parse,
         ),
         components(
             schemas(IdData, Void, VoidRes,
