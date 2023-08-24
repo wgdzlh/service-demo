@@ -1,9 +1,10 @@
 mod conf;
 mod nacos;
 
-use std::{fs, sync::Mutex};
+use std::{fs, path::Path, sync::Mutex};
 
 use const_format::concatcp;
+use notify::{RecursiveMode, Watcher};
 use once_cell::sync::Lazy;
 use time::{
     format_description::{self, FormatItem},
@@ -12,7 +13,10 @@ use time::{
 
 use conf::Config;
 
-use crate::{app, repository::Result};
+use crate::{
+    app::{self, log::*},
+    repository::Result,
+};
 
 pub const APP: &str = "service-demo";
 pub const BASE_PATH: &str = concatcp!("/", APP, "/v1");
@@ -35,6 +39,7 @@ pub static JSON_TIME_FORMAT: Lazy<Vec<FormatItem>> = Lazy::new(|| {
 pub static LOCAL_OFFSET: Lazy<UtcOffset> = Lazy::new(|| UtcOffset::current_local_offset().unwrap());
 
 pub fn init() -> app::Result<()> {
+    println!("current timezone: {:?}", *LOCAL_OFFSET);
     let args: Vec<String> = std::env::args().collect();
     // println!("args: {args:?}");
     let run_local = matches!(&args[..], [_, v, ..] if v == "-l");
@@ -43,6 +48,7 @@ pub fn init() -> app::Result<()> {
         let cs = fs::read_to_string("./config.toml").expect("local ./config.toml not exist");
         initial_conf = Config::parse(&cs)?;
         initial_conf.server.run_local = true;
+        local_conf_watch()?;
     } else {
         let cs = nacos::setup_nacos_conf_sub()?;
         initial_conf = Config::parse(&cs)?;
@@ -83,5 +89,21 @@ pub fn get_config() -> Result<Config> {
 
 pub fn add_callback(f: Callback) -> Result<()> {
     CALLBACKS.lock()?.push(f);
+    Ok(())
+}
+
+fn local_conf_watch() -> app::Result<()> {
+    // Automatically select the best implementation for your platform.
+    let mut watcher = notify::recommended_watcher(|res| {
+        match res {
+            Ok(event) => info!("event: {:?}", event),
+            Err(e) => error!("watch error: {:?}", e),
+            // _ => {}
+        }
+    })?;
+
+    // Add a path to be watched. All files and directories at that path and
+    // below will be monitored for changes.
+    watcher.watch(Path::new("./config.toml"), RecursiveMode::NonRecursive)?;
     Ok(())
 }
