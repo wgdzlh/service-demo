@@ -4,7 +4,11 @@ mod nacos;
 use std::{fs, path::Path, sync::Mutex};
 
 use const_format::concatcp;
-use notify::{RecursiveMode, Watcher};
+use futures::{channel::mpsc, SinkExt, StreamExt};
+use notify::{
+    event::{AccessKind, AccessMode},
+    EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+};
 use once_cell::sync::Lazy;
 use time::{
     format_description::{self, FormatItem},
@@ -48,7 +52,6 @@ pub fn init() -> app::Result<()> {
         let cs = fs::read_to_string("./config.toml").expect("local ./config.toml not exist");
         initial_conf = Config::parse(&cs)?;
         initial_conf.server.run_local = true;
-        local_conf_watch()?;
     } else {
         let cs = nacos::setup_nacos_conf_sub()?;
         initial_conf = Config::parse(&cs)?;
@@ -92,18 +95,41 @@ pub fn add_callback(f: Callback) -> Result<()> {
     Ok(())
 }
 
-fn local_conf_watch() -> app::Result<()> {
+pub async fn local_conf_watch() -> app::Result<()> {
+    let (mut tx, mut rx) = mpsc::channel(1);
+
     // Automatically select the best implementation for your platform.
-    let mut watcher = notify::recommended_watcher(|res| {
-        match res {
-            Ok(event) => info!("event: {:?}", event),
-            Err(e) => error!("watch error: {:?}", e),
-            // _ => {}
-        }
-    })?;
+    // You can also access each implementation directly e.g. INotifyWatcher.
+    let mut watcher = RecommendedWatcher::new(
+        move |res| {
+            futures::executor::block_on(tx.send(res)).ok();
+        },
+        notify::Config::default(),
+    )?;
 
     // Add a path to be watched. All files and directories at that path and
     // below will be monitored for changes.
     watcher.watch(Path::new("./config.toml"), RecursiveMode::NonRecursive)?;
+
+    while let Some(res) = rx.next().await {
+        match res {
+            Ok(event) => {
+                debug!("changed: {:?}", event.kind);
+                if event.kind != EventKind::Access(AccessKind::Close(AccessMode::Write)) {
+                    continue;
+                }
+                if let Ok(cs) = fs::read_to_string("./config.toml") {
+                    if let Ok(mut initial_conf) = Config::parse(&cs) {
+                        initial_conf.server.run_local = true;
+                        if set_config(initial_conf, false).is_ok() {
+                            info!("./config.toml updated");
+                        }
+                    }
+                }
+            }
+            Err(e) => error!("watch error: {e:?}"),
+        }
+    }
+
     Ok(())
 }
