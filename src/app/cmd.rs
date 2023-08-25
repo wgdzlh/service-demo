@@ -5,7 +5,7 @@ use crate::{
 
 #[tokio::main]
 pub async fn run() -> super::Result<()> {
-    if config::get_config()?.server.run_local {
+    if config::is_local() {
         tokio::spawn(config::local_conf_watch());
     }
     let db = persistence::Db::setup().await?;

@@ -17,7 +17,7 @@ pub fn init_logger() -> super::Result<()> {
     // unsafe {
     //     local_offset::set_soundness(local_offset::Soundness::Unsound);
     // }
-    let log_conf = config::get_config()?.log;
+    let log_conf = config::peek_config()?.log.clone();
     let log_level: LevelFilter = log_conf.level.parse().expect("wrong log level");
     let is_debug = log_level <= LevelFilter::DEBUG;
 

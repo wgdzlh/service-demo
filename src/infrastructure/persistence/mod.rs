@@ -19,7 +19,7 @@ pub struct Db {
 
 impl Db {
     pub async fn setup() -> app::Result<Self> {
-        let db_conf = config::get_config()?.db;
+        let db_conf = config::peek_config()?.db.clone();
         let mut opt = ConnectOptions::new(db_conf.url.clone());
         if !db_conf.log_mode {
             opt.sqlx_logging_level(LevelFilter::Trace);

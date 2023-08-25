@@ -1,7 +1,11 @@
 mod conf;
 mod nacos;
 
-use std::{fs, path::Path, sync::Mutex};
+use std::{
+    fs,
+    path::Path,
+    sync::{Mutex, MutexGuard},
+};
 
 use const_format::concatcp;
 use futures::{channel::mpsc, SinkExt, StreamExt};
@@ -26,7 +30,8 @@ pub const APP: &str = "service-demo";
 pub const BASE_PATH: &str = concatcp!("/", APP, "/v1");
 pub const DEFAULT_PORT: u16 = 8080;
 
-pub const DEFAULT_LOG_LEVEL: &str = "info";
+const DEFAULT_LOG_LEVEL: &str = "info";
+const LOCAL_CONF: &str = "./config.toml";
 
 pub static TIME_FORMAT: Lazy<Vec<FormatItem>> = Lazy::new(|| {
     format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]")
@@ -49,7 +54,7 @@ pub fn init() -> app::Result<()> {
     let run_local = matches!(&args[..], [_, v, ..] if v == "-l");
     let mut initial_conf;
     if run_local {
-        let cs = fs::read_to_string("./config.toml").expect("local ./config.toml not exist");
+        let cs = fs::read_to_string(LOCAL_CONF)?;
         initial_conf = Config::parse(&cs)?;
         initial_conf.server.run_local = true;
     } else {
@@ -76,7 +81,7 @@ fn set_config(mut new_conf: Config, init: bool) -> Result<()> {
     if init {
         *C.lock()? = new_conf;
     } else {
-        let old_conf = get_config()?;
+        let old_conf = C.lock()?.clone();
         *C.lock()? = new_conf.clone();
         let mut cbs = CALLBACKS.lock()?;
         for f in cbs.iter_mut() {
@@ -86,8 +91,16 @@ fn set_config(mut new_conf: Config, init: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn get_config() -> Result<Config> {
-    Ok(C.lock()?.clone())
+// pub fn get_config() -> Result<Config> {
+//     Ok(C.lock()?.clone())
+// }
+
+pub fn peek_config<'a>() -> Result<MutexGuard<'a, Config>> {
+    Ok(C.lock()?)
+}
+
+pub fn is_local() -> bool {
+    C.lock().map_or(false, |v| v.server.run_local)
 }
 
 pub fn add_callback(f: Callback) -> Result<()> {
@@ -109,7 +122,7 @@ pub async fn local_conf_watch() -> app::Result<()> {
 
     // Add a path to be watched. All files and directories at that path and
     // below will be monitored for changes.
-    watcher.watch(Path::new("./config.toml"), RecursiveMode::NonRecursive)?;
+    watcher.watch(Path::new(LOCAL_CONF), RecursiveMode::NonRecursive)?;
 
     while let Some(res) = rx.next().await {
         match res {
@@ -118,11 +131,11 @@ pub async fn local_conf_watch() -> app::Result<()> {
                 if event.kind != EventKind::Access(AccessKind::Close(AccessMode::Write)) {
                     continue;
                 }
-                if let Ok(cs) = fs::read_to_string("./config.toml") {
+                if let Ok(cs) = fs::read_to_string(LOCAL_CONF) {
                     if let Ok(mut initial_conf) = Config::parse(&cs) {
                         initial_conf.server.run_local = true;
                         if set_config(initial_conf, false).is_ok() {
-                            info!("./config.toml updated");
+                            info!("local config updated");
                         }
                     }
                 }

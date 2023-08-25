@@ -44,7 +44,7 @@ impl TodoRepo for TodoRepoImp {
             .lock()?
             .iter_mut()
             .find(|x| x.id == item.id)
-            .map(|x| {
+            .map_or(Err(Error::IdNotFound { id: item.id }), |x| {
                 if let Some(v) = item.value {
                     x.value = v
                 }
@@ -53,7 +53,6 @@ impl TodoRepo for TodoRepoImp {
                 }
                 Ok(())
             })
-            .unwrap_or(Err(Error::IdNotFound { id: item.id }))
     }
 
     fn delete(&self, ids: Vec<i32>) -> Result<()> {

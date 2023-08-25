@@ -64,7 +64,7 @@ pub async fn serve(db: Db, child_workers: ChildWorkers) -> app::Result<()> {
         )
         .nest(config::BASE_PATH, root);
 
-    let server_conf = config::get_config()?.server;
+    let server_conf = config::peek_config()?.server.clone();
     let port = server_conf.port.unwrap_or(config::DEFAULT_PORT);
 
     let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, port));

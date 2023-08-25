@@ -154,7 +154,7 @@ impl ChildProc {
     }
 
     fn timeout() -> Duration {
-        if let Ok(c) = config::get_config() {
+        if let Ok(c) = config::peek_config() {
             if c.py.timeout_secs > 0 {
                 return Duration::from_secs(c.py.timeout_secs);
             }

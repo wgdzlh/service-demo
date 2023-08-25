@@ -22,5 +22,5 @@ fn ok_resp() -> VoidRes {
 }
 
 fn to_raw_resp(s: String) -> Result<ObjectRes> {
-    Ok(Response::new(serde_json::from_slice(s.as_bytes())?))
+    Ok(Response::new(serde_json::from_str(&s)?))
 }
