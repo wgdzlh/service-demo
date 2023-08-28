@@ -6,7 +6,7 @@ use tokio::sync::Mutex as Lock;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::Semaphore;
-use tokio::time::{Duration, Instant};
+use tokio::time::{Duration, Instant, MissedTickBehavior};
 
 use crate::app::utils::{remove_enter, trim_end_inplace};
 use crate::infrastructure::config;
@@ -20,10 +20,8 @@ const BOUND_WORKER_CHECK_INTER: Duration = Duration::from_secs(60);
 
 const ERROR_SIG_CHAR: u8 = b'!'; // special first char to indicate child worker has output error info
 
-pub struct Cmd {
-    bin: String,
-    args: Option<Vec<String>>,
-}
+pub type ChildWorker = Arc<ChildProc>;
+pub type ChildWorkerQueue = Arc<ChildProcQueue>;
 
 pub struct ChildProc {
     cmd: Arc<Cmd>,
@@ -37,11 +35,17 @@ pub struct ChildProcQueue {
     workers: flume::Receiver<SharedWorker>,
     recycler: flume::Sender<SharedWorker>,
     worker_map: Mutex<HashMap<String, SharedWorker>>,
-    worker_cond: Mutex<HashMap<String, CondPair>>,
+    worker_cond: Mutex<HashMap<String, Cond>>,
 }
 
 type SharedWorker = Arc<Lock<Worker>>;
-type CondPair = (flume::Sender<()>, flume::Receiver<()>);
+type Cond = Arc<Lock<()>>;
+// type Cond = (flume::Sender<()>, flume::Receiver<()>);
+
+struct Cmd {
+    bin: String,
+    args: Option<Vec<String>>,
+}
 
 struct Worker {
     cmd: Arc<Cmd>,
@@ -130,7 +134,7 @@ impl ChildProc {
         args: Option<Vec<String>>,
         size: usize,
         inter: Option<Duration>,
-    ) -> Result<ChildProc> {
+    ) -> Result<ChildWorker> {
         let cmd = Arc::new(Cmd {
             bin: bin.to_owned(),
             args,
@@ -142,12 +146,13 @@ impl ChildProc {
                 tokio::time::sleep(d).await;
             }
         }
-        Ok(Self {
+        let myself = Arc::new(Self {
             cmd,
             workers: Mutex::new(workers),
             workers_sem: Semaphore::new(size),
             concurrent: size,
-        })
+        });
+        Ok(myself)
     }
 
     pub async fn one_shot(&self, input: String) -> Result<String> {
@@ -177,7 +182,7 @@ impl ChildProcQueue {
         args: Option<Vec<String>>,
         size: usize,
         inter: Option<Duration>,
-    ) -> Result<ChildProcQueue> {
+    ) -> Result<ChildWorkerQueue> {
         let cmd = Arc::new(Cmd {
             bin: bin.to_owned(),
             args,
@@ -189,50 +194,50 @@ impl ChildProcQueue {
                 tokio::time::sleep(d).await;
             }
         }
-        Ok(Self {
+        let myself = Arc::new(Self {
             cmd,
             workers: rx,
             recycler: tx,
-            worker_map: Default::default(),
-            worker_cond: Default::default(),
-        })
+            worker_map: Mutex::default(),
+            worker_cond: Mutex::default(),
+        });
+        let bg_one = myself.clone();
+        tokio::spawn(bg_one.check_timeout_workers()); // check and clean timeout bound workers in background
+        Ok(myself)
     }
 
     pub async fn bind(&self, sid: String, input: String) -> Result<String> {
-        let mut exist = true;
-        let pair = self
+        // let mut exist = true;
+        let cond = self
             .worker_cond
             .lock()?
             .entry(sid.clone())
             .or_insert_with(|| {
-                exist = false;
-                flume::bounded(1)
+                // exist = false;
+                // flume::bounded(1)
+                Arc::default()
             })
             .clone();
-        if exist {
-            pair.1.recv_async().await?;
-        }
+        // if exist {
+        //     cond.1.recv_async().await?;
+        // }
+        let _guard = cond.lock().await;
 
-        let ret;
         let some_w = self.worker_map.lock()?.get(&sid).cloned();
 
         if let Some(worker) = some_w {
-            let ret = worker.lock().await.process(input).await;
-            pair.0.send_async(()).await?;
-            return ret;
+            // cond.0.send_async(()).await?;
+            return worker.lock().await.process(input).await;
         }
 
         tokio::select! {
             Ok(worker) = self.workers.recv_async() => {
-                ret = worker.lock().await.process(input).await;
-                self.worker_map.lock()?.insert(sid, worker);
+                self.worker_map.lock()?.insert(sid, worker.clone());
+                worker.lock().await.process(input).await
             }
-            _ = tokio::time::sleep(timeout()) => {
-                ret = Err(SubmitTimeout);
-            }
+            _ = tokio::time::sleep(timeout()) => Err(SubmitTimeout)
         }
-        pair.0.send_async(()).await?;
-        ret
+        // cond.0.send_async(()).await?;
     }
 
     pub async fn unbind(&self, sid: String) -> Result<()> {
@@ -243,14 +248,15 @@ impl ChildProcQueue {
         Ok(())
     }
 
-    pub async fn check_timeout_workers(&self) -> Result<()> {
+    async fn check_timeout_workers(self: Arc<Self>) -> Result<()> {
         let mut ticker = tokio::time::interval(BOUND_WORKER_CHECK_INTER);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             let now = ticker.tick().await;
             let bound_workers = self.worker_map.lock()?.clone();
             for (sid, worker) in bound_workers {
                 if now - worker.lock().await.ts >= BOUND_WORKER_TIMEOUT {
-                    self.unbind(sid).await?;
+                    self.unbind(sid).await.ok();
                 }
             }
         }
