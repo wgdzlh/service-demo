@@ -16,6 +16,7 @@ pub enum Error {
     SubmitTimeout,
     RunSubCmdError(String),
     JsonParseError(String),
+    WorkerQueueError(String),
     Other(String),
 }
 
@@ -68,5 +69,17 @@ impl From<serde_json::Error> for Error {
 impl From<MultipartError> for Error {
     fn from(value: MultipartError) -> Self {
         Self::BadMultipart(value.to_string())
+    }
+}
+
+impl<T> From<flume::SendError<T>> for Error {
+    fn from(value: flume::SendError<T>) -> Self {
+        Self::WorkerQueueError(value.to_string())
+    }
+}
+
+impl From<flume::RecvError> for Error {
+    fn from(value: flume::RecvError) -> Self {
+        Self::WorkerQueueError(value.to_string())
     }
 }

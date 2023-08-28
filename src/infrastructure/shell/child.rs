@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Mutex as Lock;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::Semaphore;
-use tokio::time::Duration;
+use tokio::time::{Duration, Instant};
 
 use crate::app::utils::{remove_enter, trim_end_inplace};
 use crate::infrastructure::config;
@@ -13,6 +15,8 @@ use crate::{app::log::*, repository::Result};
 
 const BUFF_SIZE: usize = 65536;
 const CMD_SUBMIT_TIMEOUT: Duration = Duration::from_secs(5);
+const BOUND_WORKER_TIMEOUT: Duration = Duration::from_secs(660);
+const BOUND_WORKER_CHECK_INTER: Duration = Duration::from_secs(60);
 
 const ERROR_SIG_CHAR: u8 = b'!'; // special first char to indicate child worker has output error info
 
@@ -28,11 +32,23 @@ pub struct ChildProc {
     concurrent: usize,
 }
 
+pub struct ChildProcQueue {
+    cmd: Arc<Cmd>,
+    workers: flume::Receiver<SharedWorker>,
+    recycler: flume::Sender<SharedWorker>,
+    worker_map: Mutex<HashMap<String, SharedWorker>>,
+    worker_cond: Mutex<HashMap<String, CondPair>>,
+}
+
+type SharedWorker = Arc<Lock<Worker>>;
+type CondPair = (flume::Sender<()>, flume::Receiver<()>);
+
 struct Worker {
     cmd: Arc<Cmd>,
     proc: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    ts: Instant,
 }
 
 impl Worker {
@@ -57,6 +73,7 @@ impl Worker {
             proc,
             stdin,
             stdout,
+            ts: Instant::now(),
         })
     }
 
@@ -84,6 +101,8 @@ impl Worker {
             // proc has exited
             info!("child worker has exited");
             *self = Worker::start(&self.cmd)?;
+        } else {
+            self.ts = Instant::now();
         }
         let input = remove_enter(&input);
         self.stdin.write_all(input.as_bytes()).await?;
@@ -140,27 +159,111 @@ impl ChildProc {
             return self.one_shot(input).await;
         }
 
-        let mut worker;
-
         tokio::select! {
             _permit = self.workers_sem.acquire() => {
-                worker = self.workers.lock()?.pop().expect("workers not sufficient");
+                let mut worker = self.workers.lock()?.pop().expect("workers not sufficient");
                 let ret = worker.process(input).await;
                 self.workers.lock()?.push(worker);
                 ret
             }
-            _ = tokio::time::sleep(Self::timeout()) => Err(SubmitTimeout)
+            _ = tokio::time::sleep(timeout()) => Err(SubmitTimeout)
         }
     }
+}
 
-    fn timeout() -> Duration {
-        if let Ok(c) = config::peek_config() {
-            if c.py.timeout_secs > 0 {
-                return Duration::from_secs(c.py.timeout_secs);
+impl ChildProcQueue {
+    pub async fn setup(
+        bin: &str,
+        args: Option<Vec<String>>,
+        size: usize,
+        inter: Option<Duration>,
+    ) -> Result<ChildProcQueue> {
+        let cmd = Arc::new(Cmd {
+            bin: bin.to_owned(),
+            args,
+        });
+        let (tx, rx) = flume::bounded(size);
+        for _ in 0..size {
+            tx.send(Arc::new(Lock::new(Worker::start(&cmd)?)))?;
+            if let Some(d) = inter {
+                tokio::time::sleep(d).await;
             }
         }
-        CMD_SUBMIT_TIMEOUT
+        Ok(Self {
+            cmd,
+            workers: rx,
+            recycler: tx,
+            worker_map: Default::default(),
+            worker_cond: Default::default(),
+        })
     }
+
+    pub async fn bind(&self, sid: String, input: String) -> Result<String> {
+        let mut exist = true;
+        let pair = self
+            .worker_cond
+            .lock()?
+            .entry(sid.clone())
+            .or_insert_with(|| {
+                exist = false;
+                flume::bounded(1)
+            })
+            .clone();
+        if exist {
+            pair.1.recv_async().await?;
+        }
+
+        let ret;
+        let some_w = self.worker_map.lock()?.get(&sid).cloned();
+
+        if let Some(worker) = some_w {
+            let ret = worker.lock().await.process(input).await;
+            pair.0.send_async(()).await?;
+            return ret;
+        }
+
+        tokio::select! {
+            Ok(worker) = self.workers.recv_async() => {
+                ret = worker.lock().await.process(input).await;
+                self.worker_map.lock()?.insert(sid, worker);
+            }
+            _ = tokio::time::sleep(timeout()) => {
+                ret = Err(SubmitTimeout);
+            }
+        }
+        pair.0.send_async(()).await?;
+        ret
+    }
+
+    pub async fn unbind(&self, sid: String) -> Result<()> {
+        let some_w = self.worker_map.lock()?.remove(&sid);
+        if let Some(worker) = some_w {
+            self.recycler.send_async(worker).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn check_timeout_workers(&self) -> Result<()> {
+        let mut ticker = tokio::time::interval(BOUND_WORKER_CHECK_INTER);
+        loop {
+            let now = ticker.tick().await;
+            let bound_workers = self.worker_map.lock()?.clone();
+            for (sid, worker) in bound_workers {
+                if now - worker.lock().await.ts >= BOUND_WORKER_TIMEOUT {
+                    self.unbind(sid).await?;
+                }
+            }
+        }
+    }
+}
+
+fn timeout() -> Duration {
+    if let Ok(c) = config::peek_config() {
+        if c.py.timeout_secs > 0 {
+            return Duration::from_secs(c.py.timeout_secs);
+        }
+    }
+    CMD_SUBMIT_TIMEOUT
 }
 
 #[cfg(test)]
