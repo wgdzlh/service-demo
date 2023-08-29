@@ -1,4 +1,4 @@
-use std::{fmt, io, sync::PoisonError};
+use std::{fmt, io, string, sync};
 
 use axum::extract::multipart::MultipartError;
 
@@ -12,6 +12,7 @@ pub enum Error {
     DbError(String),
     LockFailed(String),
     IoError(String),
+    EncodingError(String),
     EmptyRet,
     SubmitTimeout,
     RunSubCmdError(String),
@@ -42,15 +43,9 @@ impl From<&str> for Error {
     }
 }
 
-impl<T> From<PoisonError<T>> for Error {
-    fn from(value: PoisonError<T>) -> Self {
+impl<T> From<sync::PoisonError<T>> for Error {
+    fn from(value: sync::PoisonError<T>) -> Self {
         Self::LockFailed(value.to_string())
-    }
-}
-
-impl From<sea_orm::DbErr> for Error {
-    fn from(value: sea_orm::DbErr) -> Self {
-        Self::DbError(value.to_string())
     }
 }
 
@@ -60,9 +55,21 @@ impl From<io::Error> for Error {
     }
 }
 
+impl From<string::FromUtf8Error> for Error {
+    fn from(value: string::FromUtf8Error) -> Self {
+        Self::EncodingError(value.to_string())
+    }
+}
+
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
         Self::JsonParseError(value.to_string())
+    }
+}
+
+impl From<sea_orm::DbErr> for Error {
+    fn from(value: sea_orm::DbErr) -> Self {
+        Self::DbError(value.to_string())
     }
 }
 

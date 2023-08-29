@@ -92,7 +92,7 @@ impl Worker {
         if out.is_empty() {
             return Err(EmptyRet);
         }
-        let out = String::from_utf8_lossy(&out).into_owned();
+        let out = String::from_utf8(out)?;
         if matches!(out.as_bytes(), [ERROR_SIG_CHAR, ..]) {
             error!(run_err=%out, %input, "child worker exec failed");
             return Err(RunSubCmdError(out));
@@ -232,8 +232,9 @@ impl ChildProcQueue {
 
         tokio::select! {
             Ok(worker) = self.workers.recv_async() => {
-                self.worker_map.lock()?.insert(sid, worker.clone());
-                worker.lock().await.process(input).await
+                let ret = worker.lock().await.process(input).await;
+                self.worker_map.lock()?.insert(sid, worker);
+                ret
             }
             _ = tokio::time::sleep(timeout()) => Err(SubmitTimeout)
         }
