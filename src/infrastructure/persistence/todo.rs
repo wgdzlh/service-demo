@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicI32, Ordering},
+    Arc, Mutex,
+};
 
 use crate::{
     app::log::*,
@@ -19,17 +22,22 @@ struct TodoRepoImp {
     data: Mutex<Vec<Todo>>,
 }
 
+static TODO_SEQ: AtomicI32 = AtomicI32::new(1);
+
 impl TodoRepo for TodoRepoImp {
     fn create(&self, mut item: Todo) -> Result<i32> {
         info!(?item, "create todo");
-        let mut list = self.data.lock()?;
-        let max_id = match list.iter().max_by_key(|x| x.id) {
-            Some(x) => x.id + 1,
-            None => 1,
-        };
-        item.id = max_id;
-        list.push(item);
-        Ok(max_id)
+        // let mut list = self.data.lock()?;
+        // let max_id = match list.iter().max_by_key(|x| x.id) {
+        //     Some(x) => x.id + 1,
+        //     None => 1,
+        // };
+        // item.id = max_id;
+        // list.push(item);
+        let id = TODO_SEQ.fetch_add(1, Ordering::SeqCst);
+        item.id = id;
+        self.data.lock()?.push(item);
+        Ok(id)
     }
 
     fn update(&self, item: TodoUpdate) -> Result<()> {
