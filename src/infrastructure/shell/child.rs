@@ -47,6 +47,12 @@ struct Cmd {
     args: Option<Vec<String>>,
 }
 
+struct OnceWorker {
+    cmd: Arc<Cmd>,
+    proc: Child,
+    stdin: ChildStdin,
+}
+
 struct Worker {
     cmd: Arc<Cmd>,
     proc: Child,
@@ -55,8 +61,8 @@ struct Worker {
     ts: Instant,
 }
 
-impl Worker {
-    fn start(cmd: &Arc<Cmd>) -> Result<Self> {
+impl OnceWorker {
+    fn init(cmd: &Arc<Cmd>) -> Result<Self> {
         let cmd = cmd.clone();
         let mut child_def = Command::new(&cmd.bin);
         if let Some(args) = &cmd.args {
@@ -65,7 +71,41 @@ impl Worker {
         let mut proc = child_def
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .spawn()?;
+        let stdin = proc.stdin.take().expect("Failed to open stdin");
+        Ok(Self { cmd, proc, stdin })
+    }
+
+    async fn run(mut self, input: String) -> Result<String> {
+        if !input.is_empty() {
+            let input = remove_enter(&input);
+            self.stdin.write_all(input.as_bytes()).await?;
+        }
+        drop(self.stdin);
+        let out = self.proc.wait_with_output().await?.stdout;
+        if out.is_empty() {
+            return Err(EmptyRet);
+        }
+        let out = String::from_utf8(out)?;
+        if matches!(out.as_bytes(), [ERROR_SIG_CHAR, ..]) {
+            error!(run_err=%out, %input, "child worker exec failed");
+            return Err(RunSubCmdError(out));
+        }
+        Ok(out)
+    }
+}
+
+impl Worker {
+    fn init(cmd: &Arc<Cmd>) -> Result<Self> {
+        let cmd = cmd.clone();
+        let mut child_def = Command::new(&cmd.bin);
+        if let Some(args) = &cmd.args {
+            child_def.args(args);
+        }
+        let mut proc = child_def
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            // .stderr(Stdio::inherit())
             .spawn()?;
         let stdin = proc.stdin.take().expect("Failed to open stdin");
         let stdout = BufReader::with_capacity(
@@ -81,30 +121,11 @@ impl Worker {
         })
     }
 
-    async fn run(mut self, input: String) -> Result<String> {
-        if !input.is_empty() {
-            let input = remove_enter(&input);
-            self.stdin.write_all(input.as_bytes()).await?;
-            self.stdin.write_all(b"\n").await?;
-        }
-        drop(self.stdin);
-        let out = self.proc.wait_with_output().await?.stdout;
-        if out.is_empty() {
-            return Err(EmptyRet);
-        }
-        let out = String::from_utf8(out)?;
-        if matches!(out.as_bytes(), [ERROR_SIG_CHAR, ..]) {
-            error!(run_err=%out, %input, "child worker exec failed");
-            return Err(RunSubCmdError(out));
-        }
-        Ok(out)
-    }
-
     async fn process(&mut self, input: String) -> Result<String> {
         if let Ok(Some(_)) | Err(_) = self.proc.try_wait() {
             // proc has exited
             info!("child worker has exited");
-            *self = Worker::start(&self.cmd)?;
+            *self = Worker::init(&self.cmd)?;
         } else {
             self.ts = Instant::now();
         }
@@ -141,7 +162,7 @@ impl ChildProc {
         });
         let mut workers = Vec::new();
         for _ in 0..size {
-            workers.push(Worker::start(&cmd)?);
+            workers.push(Worker::init(&cmd)?);
             if let Some(d) = inter {
                 tokio::time::sleep(d).await;
             }
@@ -156,7 +177,7 @@ impl ChildProc {
     }
 
     pub async fn one_shot(&self, input: String) -> Result<String> {
-        Worker::start(&self.cmd)?.run(input).await
+        OnceWorker::init(&self.cmd)?.run(input).await
     }
 
     pub async fn submit(&self, input: String) -> Result<String> {
@@ -189,7 +210,7 @@ impl ChildProcQueue {
         });
         let (tx, rx) = flume::bounded(size);
         for _ in 0..size {
-            tx.send(Arc::new(Lock::new(Worker::start(&cmd)?)))?;
+            tx.send(Arc::new(Lock::new(Worker::init(&cmd)?)))?;
             if let Some(d) = inter {
                 tokio::time::sleep(d).await;
             }
@@ -275,39 +296,29 @@ fn timeout() -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use std::process::Stdio;
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::process::Command;
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test() {
-        let mut child = Command::new("rev")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn child process");
-
-        let mut stdin = child.stdin.take().expect("Failed to open stdin");
-        // tokio::spawn(async move {
-        stdin
-            .write_all("Hello, world!".as_bytes())
+    async fn test_one_shot() {
+        let cp = super::ChildProc::setup("rev", None, 0, None)
             .await
-            .expect("Failed to write to stdin");
-        // });
-        drop(stdin);
-
-        let stdout = child.stdout.take().expect("Failed to open stdout");
-        // let output = child
-        //     .wait_with_output()
-        //     .await
-        //     .expect("Failed to read stdout");
-        let mut output = BufReader::new(stdout);
-        let mut ret_buf = String::new();
-        output
-            .read_line(&mut ret_buf)
+            .expect("Failed to setup child proc");
+        let out = cp
+            .one_shot("Hello, world..".to_owned())
             .await
-            .expect("Failed to read stdout");
-        // assert_eq!(String::from_utf8_lossy(&output.stdout), "!dlrow ,olleH");
-        assert_eq!(ret_buf, "!dlrow ,olleH");
+            .expect("Failed to run task");
+        assert_eq!(out, "..dlrow ,olleH");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_submit() {
+        let cp =
+            super::ChildProc::setup("sed", Some(vec!["-u".to_owned(), "".to_owned()]), 2, None)
+                .await
+                .expect("Failed to setup child workers");
+        let out = cp
+            .submit("Hello, world..".to_owned())
+            .await
+            .expect("Failed to run task");
+        assert_eq!(out, "Hello, world..");
     }
 }
