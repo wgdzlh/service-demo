@@ -30,5 +30,5 @@ if __name__ == '__main__':
                       separators=(',', ':'))
             print(flush=True)
         except Exception as e:
-            ln = traceback.extract_tb(sys.exc_info()[2])[-1].lineno
-            print(f'!{__file__}:{ln}:{repr(e)}', flush=True)
+            _info = traceback.extract_tb(sys.exc_info()[2])[-1]
+            print(f'!{_info.filename}:{_info.lineno}:{repr(e)}', flush=True)
