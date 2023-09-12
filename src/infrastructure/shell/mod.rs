@@ -23,6 +23,7 @@ impl ChildWorkers {
             Some(vec!["scripts/read_xls.py".to_owned()]),
             py_config.read_xls_workers,
             py_config.read_xls_inter_ms.map(Duration::from_millis),
+            0,
         )
         .await?;
         Ok(Self { read_xls })

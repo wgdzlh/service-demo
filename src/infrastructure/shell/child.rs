@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use tokio::sync::Mutex as Lock;
 
+use cached::{Cached, SizedCache};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::sync::Mutex as Lock;
 use tokio::sync::Semaphore;
 use tokio::time::{Duration, Instant, MissedTickBehavior};
 
@@ -28,6 +29,7 @@ pub struct ChildProc {
     workers: Mutex<Vec<Worker>>,
     workers_sem: Semaphore,
     concurrent: usize,
+    cache: Option<Mutex<SizedCache<String, String>>>,
 }
 
 pub struct ChildProcQueue {
@@ -76,9 +78,9 @@ impl OnceWorker {
         Ok(Self { cmd, proc, stdin })
     }
 
-    async fn run(mut self, input: String) -> Result<String> {
+    async fn run(mut self, input: &str) -> Result<String> {
         if !input.is_empty() {
-            let input = remove_enter(&input);
+            let input = remove_enter(input);
             self.stdin.write_all(input.as_bytes()).await?;
         }
         drop(self.stdin);
@@ -121,7 +123,7 @@ impl Worker {
         })
     }
 
-    async fn process(&mut self, input: String) -> Result<String> {
+    async fn process(&mut self, input: &str) -> Result<String> {
         if let Ok(Some(_)) | Err(_) = self.proc.try_wait() {
             // proc has exited
             info!("child worker has exited");
@@ -129,9 +131,11 @@ impl Worker {
         } else {
             self.ts = Instant::now();
         }
-        let input = remove_enter(&input);
-        self.stdin.write_all(input.as_bytes()).await?;
-        self.stdin.write_all(b"\n").await?;
+        if !input.is_empty() {
+            let input = remove_enter(input);
+            self.stdin.write_all(input.as_bytes()).await?;
+        }
+        self.stdin.write_u8(b'\n').await?;
         let mut ret_buf = String::new();
         let nb = self.stdout.read_line(&mut ret_buf).await?;
         if nb == 0 {
@@ -155,6 +159,7 @@ impl ChildProc {
         args: Option<Vec<String>>,
         size: usize,
         inter: Option<Duration>,
+        cache_size: usize,
     ) -> Result<ChildWorker> {
         let cmd = Arc::new(Cmd {
             bin: bin.to_owned(),
@@ -172,12 +177,13 @@ impl ChildProc {
             workers: Mutex::new(workers),
             workers_sem: Semaphore::new(size),
             concurrent: size,
+            cache: (cache_size > 0).then(|| Mutex::new(SizedCache::with_size(cache_size))),
         });
         Ok(myself)
     }
 
     pub async fn one_shot(&self, input: String) -> Result<String> {
-        OnceWorker::init(&self.cmd)?.run(input).await
+        OnceWorker::init(&self.cmd)?.run(&input).await
     }
 
     pub async fn submit(&self, input: String) -> Result<String> {
@@ -185,11 +191,22 @@ impl ChildProc {
             return self.one_shot(input).await;
         }
 
+        if let Some(x) = &self.cache {
+            if let Some(ret) = x.lock()?.cache_get(&input) {
+                return Ok(ret.clone());
+            }
+        }
+
         tokio::select! {
             _permit = self.workers_sem.acquire() => {
                 let mut worker = self.workers.lock()?.pop().expect("workers not sufficient");
-                let ret = worker.process(input).await;
+                let ret = worker.process(&input).await;
                 self.workers.lock()?.push(worker);
+                if let Some(x) = &self.cache {
+                    if let Ok(r) = &ret {
+                        x.lock()?.cache_set(input, r.clone());
+                    }
+                }
                 ret
             }
             _ = tokio::time::sleep(timeout()) => Err(SubmitTimeout)
@@ -248,12 +265,12 @@ impl ChildProcQueue {
 
         if let Some(worker) = some_w {
             // cond.0.send_async(()).await?;
-            return worker.lock().await.process(input).await;
+            return worker.lock().await.process(&input).await;
         }
 
         tokio::select! {
             Ok(worker) = self.workers.recv_async() => {
-                let ret = worker.lock().await.process(input).await;
+                let ret = worker.lock().await.process(&input).await;
                 self.worker_map.lock()?.insert(sid, worker);
                 ret
             }
@@ -299,7 +316,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_one_shot() {
-        let cp = super::ChildProc::setup("rev", None, 0, None)
+        let cp = super::ChildProc::setup("rev", None, 0, None, 0)
             .await
             .expect("Failed to setup child proc");
         let out = cp
@@ -311,10 +328,15 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_submit() {
-        let cp =
-            super::ChildProc::setup("sed", Some(vec!["-u".to_owned(), "".to_owned()]), 2, None)
-                .await
-                .expect("Failed to setup child workers");
+        let cp = super::ChildProc::setup(
+            "sed",
+            Some(vec!["-u".to_owned(), "".to_owned()]),
+            2,
+            None,
+            0,
+        )
+        .await
+        .expect("Failed to setup child workers");
         let out = cp
             .submit("Hello, world..".to_owned())
             .await
