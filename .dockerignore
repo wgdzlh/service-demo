@@ -1,8 +1,9 @@
 /.vscode
 /.idea
+**/.git
+**/.gitignore
 **/target
-.git
-.gitignore
+**/__pycache__
 Dockerfile
 Makefile
 LICENSE

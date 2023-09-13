@@ -192,8 +192,8 @@ impl ChildProc {
         }
 
         if let Some(x) = &self.cache {
-            if let Some(ret) = x.lock()?.cache_get(&input) {
-                return Ok(ret.clone());
+            if let Some(r) = x.lock()?.cache_get(&input) {
+                return Ok(r.clone());
             }
         }
 
