@@ -27,21 +27,21 @@ tracing = "~0.1"
 tracing-subscriber = { version = "0.3", features = ["time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
-utoipa = { version = "3", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "3", features = ["axum"] }
+utoipa = { version = "4", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "4", features = ["axum"] }
 time = { version = "0.3", features = ["local-offset"] }
 const_format = "~0.2"
 anyhow = "1"
 once_cell = "1"
 async-trait = "~0.1"
-toml = "0.7"
+toml = "0.8"
 nacos-sdk = "0.3"
 uuid = { version = "1.4", features = ["v4"] }
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
 notify = "6"
 flume = "0.11"
-cached = "0.45"
+cached = "0.46"
 
 [dev-dependencies]
 # Enable test-utilities in dev mode only. This is mostly for tests.

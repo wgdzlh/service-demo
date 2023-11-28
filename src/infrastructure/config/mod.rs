@@ -72,7 +72,7 @@ pub fn init() -> app::Result<()> {
 type Callback = Box<dyn FnMut(&Config, &Config) + Send + Sync>; // callback type for online config change; may mutate captured vars
 
 static C: Lazy<Mutex<Config>> = Lazy::new(Mutex::default); // global config instance
-static CALLBACKS: Lazy<Mutex<Vec<Callback>>> = Lazy::new(Mutex::default);
+static CALLBACKS: Mutex<Vec<Callback>> = Mutex::new(Vec::new()); // global config callbacks
 
 fn set_config(mut new_conf: Config, init: bool) -> Result<()> {
     if new_conf.log.level.is_empty() {
