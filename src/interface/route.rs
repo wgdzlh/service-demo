@@ -67,9 +67,7 @@ pub async fn serve(db: Db, child_workers: ChildWorkers) -> app::Result<()> {
     let server_conf = config::peek_config()?.server.clone();
     let port = server_conf.port.unwrap_or(config::DEFAULT_PORT);
 
-    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, port))
-        .await
-        .unwrap();
+    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;

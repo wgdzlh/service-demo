@@ -9,7 +9,7 @@ docker run -d --restart always --network host --name postgres-test -e TZ=Asia/Sh
 
 ## 本地调试
 ```sh
-sudo sed -i '$ a 127.0.0.1 host.docker.internal' /etc/hosts  # 或修改config.toml
+sudo sed -i '$ a 127.0.0.1 host.docker.internal' /etc/hosts  # 或修改config.toml，该配置文件支持hot reload
 cargo run -- -l
 ```
 
