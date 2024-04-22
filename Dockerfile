@@ -1,5 +1,5 @@
 # FROM messense/rust-musl-cross:x86_64-musl AS chef
-FROM clux/muslrust:1.71.1-stable AS chef
+FROM clux/muslrust:1.77.2-stable AS chef
 ENV TZ=Asia/Shanghai
 
 RUN sed -i 's|archive.ubuntu.com|mirrors.ustc.edu.cn|g' /etc/apt/sources.list \
@@ -24,7 +24,7 @@ ARG APP_VERSION=v1.0.0
 RUN APP_VERSION=${APP_VERSION} BUILD_TIME=`date +%Y-%m-%dT%H:%M:%S` cargo build --release --target x86_64-unknown-linux-musl
 
 # Create a new stage with a minimal image for runtime
-FROM python:3.10.12-alpine3.17
+FROM python:3.10.13-alpine3.19
 ENV TZ=Asia/Shanghai
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \

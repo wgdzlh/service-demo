@@ -4,6 +4,7 @@ use tokio::time::Duration;
 
 mod child;
 pub use child::ChildWorker;
+#[allow(unused_imports)]
 pub use child::ChildWorkerQueue;
 
 use crate::app;

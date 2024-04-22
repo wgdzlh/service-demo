@@ -1,8 +1,8 @@
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::Ipv4Addr;
 
-use axum::{extract::DefaultBodyLimit, routing, Router, Server};
+use axum::{extract::DefaultBodyLimit, routing, Router};
 use const_format::concatcp;
-use tokio::signal;
+use tokio::{net::TcpListener, signal};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use utoipa::OpenApi;
@@ -67,9 +67,10 @@ pub async fn serve(db: Db, child_workers: ChildWorkers) -> app::Result<()> {
     let server_conf = config::peek_config()?.server.clone();
     let port = server_conf.port.unwrap_or(config::DEFAULT_PORT);
 
-    let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, port));
-    Server::bind(&address)
-        .serve(app.into_make_service())
+    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, port))
+        .await
+        .unwrap();
+    axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
